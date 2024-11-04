@@ -18,9 +18,10 @@ root.render(
     {/* < DualCameraPoseEstimation2 /> */}
     {/* <PoseestimationForSingleCamera /> */}
     {/* <PoseEstimationWithCameraSwitch /> */}
-    <DualCameraPoseEstimation />
+    {/* <DualCameraPoseEstimation /> */}
     {/* < Example /> */}
-    {/* < PoseEstimationComponent /> */}
+    < PoseEstimationComponent />
+    {/* < DualCameraPoseEstimation2 /> */}
   
   
   
