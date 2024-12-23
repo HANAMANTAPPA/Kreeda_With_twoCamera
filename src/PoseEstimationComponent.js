@@ -4,6 +4,17 @@ import { Pose } from '@mediapipe/pose';
 const DualCameraPoseEstimation = () => {
   const [cameras, setCameras] = useState([]);
   const [activeCamera, setActiveCamera] = useState(1);
+  const [counter, setCounter] = useState(0);
+
+  // States to track phase detection
+  const [camera1Phase1, setCamera1Phase1] = useState(false);
+  const [camera1Phase2, setCamera1Phase2] = useState(false);
+  const [camera2Phase1, setCamera2Phase1] = useState(false);
+  const [camera2Phase2, setCamera2Phase2] = useState(false);
+
+  // State to prevent double-counting
+  const [phaseComplete, setPhaseComplete] = useState(false);
+
   const videoRef1 = useRef(null);
   const videoRef2 = useRef(null);
   const canvasRef1 = useRef(null);
@@ -28,18 +39,29 @@ const DualCameraPoseEstimation = () => {
     await videoElement.play();
   };
 
-  const setupPoseEstimation = (poseEstimator, videoElement, canvasElement, cameraLabel) => {
+  const setupPoseEstimation = (poseEstimator, videoElement, canvasElement, cameraNumber) => {
     poseEstimator.onResults(results => {
       const canvasCtx = canvasElement.getContext('2d');
       drawPoseResults(results, canvasCtx);
 
       if (results.poseLandmarks) {
-        const angle = calculateAngle(
-          results.poseLandmarks[11], // Left shoulder
-          results.poseLandmarks[13], // Left elbow
-          results.poseLandmarks[15]  // Left wrist
-        );
-        console.log(`Angle from ${cameraLabel}:`, angle.toFixed(2));
+        const landmarks = results.poseLandmarks;
+
+        // Evaluate phases
+        const phase1 = evaluate1(landmarks);
+        const phase2 = evaluate2(landmarks);
+
+        // Log phase detection for debugging
+        console.log(`Camera ${cameraNumber}: Phase1=${phase1}, Phase2=${phase2}`);
+
+        // Update state based on the camera
+        if (cameraNumber === 1) {
+          setCamera1Phase1(phase1);
+          setCamera1Phase2(phase2);
+        } else if (cameraNumber === 2) {
+          setCamera2Phase1(phase1);
+          setCamera2Phase2(phase2);
+        }
       }
     });
 
@@ -81,6 +103,20 @@ const DualCameraPoseEstimation = () => {
     return angle;
   };
 
+  const evaluate1 = att => {
+    return (
+      calculateAngle(att[12], att[14], att[16]) > 170 && // Right arm
+      calculateAngle(att[11], att[13], att[15]) > 160    // Left arm
+    );
+  };
+
+  const evaluate2 = att => {
+    return (
+      calculateAngle(att[12], att[14], att[16]) < 60 &&  // Right arm
+      calculateAngle(att[11], att[13], att[15]) < 60     // Left arm
+    );
+  };
+
   useEffect(() => {
     if (cameras.length >= 2) {
       pose1.current = new Pose({
@@ -108,13 +144,36 @@ const DualCameraPoseEstimation = () => {
       startVideoStream(videoRef1.current, cameras[0].deviceId);
       startVideoStream(videoRef2.current, cameras[1].deviceId);
 
-      setupPoseEstimation(pose1.current, videoRef1.current, canvasRef1.current, 'Camera 1');
-      setupPoseEstimation(pose2.current, videoRef2.current, canvasRef2.current, 'Camera 2');
+      setupPoseEstimation(pose1.current, videoRef1.current, canvasRef1.current, 1);
+      setupPoseEstimation(pose2.current, videoRef2.current, canvasRef2.current, 2);
     }
   }, [cameras]);
 
+  // Watch for phase alignment and increment the counter
+  useEffect(() => {
+    if (
+      !phaseComplete &&
+      ((camera1Phase1 && camera2Phase1) || (camera1Phase2 && camera2Phase2))
+    ) {
+      setCounter(prevCounter => prevCounter + 1);
+      setPhaseComplete(true); // Prevent double increment
+      console.log('Counter incremented:', counter + 1);
+
+      // Reset phase detection
+      setTimeout(() => {
+        setPhaseComplete(false);
+        setCamera1Phase1(false);
+        setCamera1Phase2(false);
+        setCamera2Phase1(false);
+        setCamera2Phase2(false);
+      }, 1000); // 1-second cooldown
+    }
+  }, [camera1Phase1, camera1Phase2, camera2Phase1, camera2Phase2, phaseComplete]);
+
   return (
     <div>
+      <h2>Dual Camera Pose Estimation</h2>
+      <p>Counter: {Math.floor(counter / 2)}</p>
       <button onClick={() => setActiveCamera(1)}>Show Camera 1</button>
       <button onClick={() => setActiveCamera(2)}>Show Camera 2</button>
       <div style={{ display: 'flex' }}>
